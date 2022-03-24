@@ -1,108 +1,106 @@
-import shutil, psutil
 import signal
-import os
-import asyncio
-import time
-import subprocess
 
+from os import path as ospath, remove as osremove, execl as osexecl
+from subprocess import run as srun
+from psutil import disk_usage, cpu_percent, swap_memory, cpu_count, virtual_memory, net_io_counters, Process as psprocess
+from time import time
 from pyrogram import idle
 from sys import executable
 from telegram import ParseMode, InlineKeyboardMarkup
 from telegram.ext import CommandHandler
 
-from wserver import start_server_async
-from bot import bot, app, dispatcher, updater, botStartTime, IGNORE_PENDING_REQUESTS, IS_VPS, PORT, alive, web, OWNER_ID, AUTHORIZED_CHATS, LOGGER, Interval, nox
-from bot.helper.ext_utils import fs_utils
-from bot.helper.telegram_helper.bot_commands import BotCommands
-from bot.helper.telegram_helper.message_utils import sendMessage, sendMarkup, editMessage, sendLogFile
+from bot import bot, app, dispatcher, updater, botStartTime, IGNORE_PENDING_REQUESTS, PORT, alive, web, AUTHORIZED_CHATS, LOGGER, Interval, rss_session, a2c
+from .helper.ext_utils.fs_utils import start_cleanup, clean_all, exit_clean_up
+from .helper.telegram_helper.bot_commands import BotCommands
+from .helper.telegram_helper.message_utils import sendMessage, sendMarkup, editMessage, sendLogFile
 from .helper.ext_utils.telegraph_helper import telegraph
 from .helper.ext_utils.bot_utils import get_readable_file_size, get_readable_time
 from .helper.telegram_helper.filters import CustomFilters
-from bot.helper.telegram_helper import button_build
-from .modules import authorize, list, cancel_mirror, mirror_status, mirror, clone, watch, shell, eval, delete, speedtest, count, leech_settings, search
+from .helper.telegram_helper.button_build import ButtonMaker
+from .modules import authorize, list, cancel_mirror, mirror_status, mirror, clone, watch, shell, eval, delete, speedtest, count, leech_settings, search, rss
 
 
 def stats(update, context):
-    currentTime = get_readable_time(time.time() - botStartTime)
-    total, used, free = shutil.disk_usage('.')
+    currentTime = get_readable_time(time() - botStartTime)
+    total, used, free, disk= disk_usage('/')
     total = get_readable_file_size(total)
     used = get_readable_file_size(used)
     free = get_readable_file_size(free)
-    sent = get_readable_file_size(psutil.net_io_counters().bytes_sent)
-    recv = get_readable_file_size(psutil.net_io_counters().bytes_recv)
-    cpuUsage = psutil.cpu_percent(interval=0.5)
-    disk = psutil.disk_usage('/').percent
-    p_core = psutil.cpu_count(logical=False)
-    t_core = psutil.cpu_count(logical=True)
-    swap = psutil.swap_memory()
+    sent = get_readable_file_size(net_io_counters().bytes_sent)
+    recv = get_readable_file_size(net_io_counters().bytes_recv)
+    cpuUsage = cpu_percent(interval=0.5)
+    p_core = cpu_count(logical=False)
+    t_core = cpu_count(logical=True)
+    swap = swap_memory()
     swap_p = swap.percent
     swap_t = get_readable_file_size(swap.total)
     swap_u = get_readable_file_size(swap.used)
-    memory = psutil.virtual_memory()
+    memory = virtual_memory()
     mem_p = memory.percent
     mem_t = get_readable_file_size(memory.total)
     mem_a = get_readable_file_size(memory.available)
     mem_u = get_readable_file_size(memory.used)
-    stats = f'╭─🤖<b>Bot Uptime:</b> {currentTime}\n'\
-            f'├─💽<b>Total Disk Space:</b> {total}\n'\
-            f'├─💻<b>Used:</b> {used} | 💾<b>Free:</b> {free}\n'\
-            f'├─📤<b>Upload:</b> {sent}\n'\
-            f'├─📥<b>Download:</b> {recv}\n'\
-            f'├─🖥️<b>CPU:</b> {cpuUsage}%\n'\
-            f'├─📏<b>RAM:</b> {mem_p}%\n'\
-            f'├─💿<b>DISK:</b> {disk}%\n'\
-            f'├─🛰️<b>Physical Cores:</b> {p_core}\n'\
-            f'├─⚙️<b>Total Cores:</b> {t_core}\n'\
-            f'├─<b>SWAP:</b> {swap_t} | <b>Used:</b> {swap_p}%\n'\
-            f'├─💽<b>Memory Total:</b> {mem_t}\n'\
-            f'├─💾<b>Memory Free:</b> {mem_a}\n'\
-            f'├─💻<b>Memory Used:</b> {mem_u}\n'\
-            f'╰───『💥 <a href="https://github.com/Abhisek331"><b>𝙰𝚋𝚑𝚒𝚜𝚎𝚔331</b></a> 💥』\n'
-    sendMessage(stats, context.bot, update)
+    stats = f'<b>Bot Uptime:</b> {currentTime}\n\n'\
+            f'<b>Total Disk Space:</b> {total}\n'\
+            f'<b>Used:</b> {used} | <b>Free:</b> {free}\n\n'\
+            f'<b>Upload:</b> {sent}\n'\
+            f'<b>Download:</b> {recv}\n\n'\
+            f'<b>CPU:</b> {cpuUsage}%\n'\
+            f'<b>RAM:</b> {mem_p}%\n'\
+            f'<b>DISK:</b> {disk}%\n\n'\
+            f'<b>Physical Cores:</b> {p_core}\n'\
+            f'<b>Total Cores:</b> {t_core}\n\n'\
+            f'<b>SWAP:</b> {swap_t} | <b>Used:</b> {swap_p}%\n'\
+            f'<b>Memory Total:</b> {mem_t}\n'\
+            f'<b>Memory Free:</b> {mem_a}\n'\
+            f'<b>Memory Used:</b> {mem_u}\n'
+    sendMessage(stats, context.bot, update.message)
 
 
 def start(update, context):
-    buttons = button_build.ButtonMaker()
-    buttons.buildbutton("Repo", "https://github.com/Abhisek331/newMIRROR-x")
-    buttons.buildbutton("My Owner", "https://t.me/XdaAbhi")
+    buttons = ButtonMaker()
+    buttons.buildbutton("Repo", "https://www.github.com/anasty17/mirror-leech-telegram-bot")
+    buttons.buildbutton("Report Group", "https://t.me/+PRRzqHd31XY3ZWZk")
     reply_markup = InlineKeyboardMarkup(buttons.build_menu(2))
     if CustomFilters.authorized_user(update) or CustomFilters.authorized_chat(update):
         start_string = f'''
-i can mirror whatever my master want!
-Type /{BotCommands.HelpCommand} to get a list of available service
+This bot can mirror all your links to Google Drive!
+Type /{BotCommands.HelpCommand} to get a list of available commands
 '''
-        sendMarkup(start_string, context.bot, update, reply_markup)
+        sendMarkup(start_string, context.bot, update.message, reply_markup)
     else:
-        sendMarkup('You Are Not My Owner🥱, FUCK OFF🖕', context.bot, update, reply_markup)
+        sendMarkup('Not Authorized user, deploy your own mirror-leech bot', context.bot, update.message, reply_markup)
 
 def restart(update, context):
-    restart_message = sendMessage("booting 🔧", context.bot, update)
+    restart_message = sendMessage("Restarting...", context.bot, update.message)
     if Interval:
         Interval[0].cancel()
     alive.kill()
-    process = psutil.Process(web.pid)
-    for proc in process.children(recursive=True):
+    procs = psprocess(web.pid)
+    for proc in procs.children(recursive=True):
         proc.kill()
-    process.kill()
-    fs_utils.clean_all()
-    subprocess.run(["python3", "update.py"])
-    # Save restart message object in order to reply to it after restarting
-    nox.kill()
+    procs.kill()
+    clean_all()
+    srun(["python3", "update.py"])
+    a2cproc = psprocess(a2c.pid)
+    for proc in a2cproc.children(recursive=True):
+        proc.kill()
+    a2cproc.kill()
     with open(".restartmsg", "w") as f:
         f.truncate(0)
         f.write(f"{restart_message.chat.id}\n{restart_message.message_id}\n")
-    os.execl(executable, executable, "-m", "bot")
+    osexecl(executable, executable, "-m", "bot")
 
 
 def ping(update, context):
-    start_time = int(round(time.time() * 1000))
-    reply = sendMessage("Starting Ping", context.bot, update)
-    end_time = int(round(time.time() * 1000))
+    start_time = int(round(time() * 1000))
+    reply = sendMessage("Starting Ping", context.bot, update.message)
+    end_time = int(round(time() * 1000))
     editMessage(f'{end_time - start_time} ms', reply)
 
 
 def log(update, context):
-    sendLogFile(context.bot, update)
+    sendLogFile(context.bot, update.message)
 
 
 help_string_telegraph = f'''<br>
@@ -150,6 +148,16 @@ help_string_telegraph = f'''<br>
 <br><br>
 <b>/{BotCommands.SetThumbCommand}</b>: Reply photo to set it as Thumbnail
 <br><br>
+<b>/{BotCommands.RssListCommand}</b>: List all subscribed rss feed info
+<br><br>
+<b>/{BotCommands.RssGetCommand}</b>: [Title] [Number](last N links): Force fetch last N links
+<br><br>
+<b>/{BotCommands.RssSubCommand}</b>: [Title] [Rss Link] f: [filter]: Subscribe new rss feed
+<br><br>
+<b>/{BotCommands.RssUnSubCommand}</b>: [Title]: Unubscribe rss feed by title
+<br><br>
+<b>/{BotCommands.RssSettingsCommand}</b>: Rss Settings
+<br><br>
 <b>/{BotCommands.CancelMirror}</b>: Reply to the message by which the download was initiated and that download will be cancelled
 <br><br>
 <b>/{BotCommands.CancelAllCommand}</b>: Cancel all downloading tasks
@@ -193,10 +201,10 @@ help_string = f'''
 '''
 
 def bot_help(update, context):
-    button = button_build.ButtonMaker()
+    button = ButtonMaker()
     button.buildbutton("Other Commands", f"https://telegra.ph/{help}")
     reply_markup = InlineKeyboardMarkup(button.build_menu(1))
-    sendMarkup(help_string, context.bot, update, reply_markup)
+    sendMarkup(help_string, context.bot, update.message, reply_markup)
 
 botcmds = [
 
@@ -234,22 +242,18 @@ botcmds = [
 
 def main():
     # bot.set_my_commands(botcmds)
-    fs_utils.start_cleanup()
-    if IS_VPS:
-        asyncio.new_event_loop().run_until_complete(start_server_async(PORT))
+    start_cleanup()
     # Check if the bot is restarting
-    if os.path.isfile(".restartmsg"):
+    if ospath.isfile(".restartmsg"):
         with open(".restartmsg") as f:
             chat_id, msg_id = map(int, f)
-        bot.edit_message_text("╭──《♻️ 𝐁𝐎𝐓 𝐆𝐎𝐓 𝐑𝐄𝐒𝐓𝐀𝐑𝐓𝐄𝐃 ♻️》\n│\n├─𝐑𝐞-𝐌𝐢𝐫𝐫𝐨𝐫 𝐘𝐨𝐮𝐫 𝐓𝐡𝐢𝐧𝐠𝐬 🖤\n│\n├─🖥️ #𝐑𝐞𝐬𝐭𝐚𝐫𝐭𝐞𝐝\n│\n╰──『💥 𝙰𝚋𝚑𝚒𝚜𝚎𝚔331 💥』", chat_id, msg_id)
-        os.remove(".restartmsg")
-    elif OWNER_ID:
+        bot.edit_message_text("Restarted successfully!", chat_id, msg_id)
+        osremove(".restartmsg")
+    elif AUTHORIZED_CHATS:
         try:
-            text = "♻️ 𝐁𝐎𝐓 𝐆𝐎𝐓 𝐑𝐄𝐒𝐓𝐀𝐑𝐓𝐄𝐃 ♻️\n\n\n🤖𝙿𝙻𝙴𝙰𝚂𝙴 𝚁𝙴-𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳 𝙰𝙶𝙰𝙸𝙽🤖\n\n🖥️#Restarted\n\n𝙰𝚋𝚑𝚒𝚜𝚎𝚔331"
-            bot.sendMessage(chat_id=OWNER_ID, text=text, parse_mode=ParseMode.HTML)
-            if AUTHORIZED_CHATS:
-                for i in AUTHORIZED_CHATS:
-                    bot.sendMessage(chat_id=i, text=text, parse_mode=ParseMode.HTML)
+            for i in AUTHORIZED_CHATS:
+                if str(i).startswith('-'):
+                    bot.sendMessage(chat_id=i, text="<b>Bot Started!</b>", parse_mode=ParseMode.HTML)
         except Exception as e:
             LOGGER.warning(e)
 
@@ -271,7 +275,9 @@ def main():
     dispatcher.add_handler(log_handler)
     updater.start_polling(drop_pending_updates=IGNORE_PENDING_REQUESTS)
     LOGGER.info("Bot Started!")
-    signal.signal(signal.SIGINT, fs_utils.exit_clean_up)
+    signal.signal(signal.SIGINT, exit_clean_up)
+    if rss_session is not None:
+        rss_session.start()
 
 app.start()
 main()
